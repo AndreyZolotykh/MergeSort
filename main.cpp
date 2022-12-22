@@ -3,16 +3,6 @@
 #include <vector>
 #include <future>
 
-std::chrono::high_resolution_clock::time_point timeNow()
-{
-    return std::chrono::high_resolution_clock::now();
-}
-double timeSpent(std::chrono::high_resolution_clock::time_point timeStart)
-{
-    std::chrono::duration<double, std::milli> duration_ms = timeNow() - timeStart;
-    return duration_ms.count();
-}
-
 
 // Получаем число одновременно работающих потоков.
 unsigned int getKernelsCount()
@@ -195,18 +185,18 @@ int main()
     generateRandomData(arr, dataLength);
 
     std::cout << "==== Обработка в однопоточном режиме ====" << std::endl;
-    startTime = timeNow();
+    startTime = std::chrono::high_resolution_clock::now();
     merge(arr, 0, dataLength - 1);
-    tempTime = timeSpent(startTime);
-    std::cout << "Сортировка заняла: " << std::setprecision(3) << tempTime / 1000 << " с" << std::endl;
+    auto duration = std::chrono::high_resolution_clock::now() - startTime;
+    std::cout << "Сортировка заняла: " << std::setprecision(3) << duration.count() / 1000000 << " мс" << std::endl;
 
     generateRandomData(arr, dataLength);
 
     std::cout << "==== Обработка в многопоточном режиме ====" << std::endl;
-    startTime = timeNow();
+    startTime = std::chrono::high_resolution_clock::now();
     mergeParallel(arr, dataLength, threadsCount);
-    tempTime = timeSpent(startTime);
-    std::cout << "Сортировка заняла: " << std::setprecision(3) << tempTime / 1000 << " с" << std::endl;
+    duration = std::chrono::high_resolution_clock::now() - startTime;
+    std::cout << "Сортировка заняла: " << std::setprecision(3) << duration.count() / 1000000 << " мс" << std::endl;
 
 
     // Проверка правильности сортировки
