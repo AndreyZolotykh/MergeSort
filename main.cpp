@@ -1,240 +1,234 @@
-#include <string>
-#include <fstream>
 #include <iostream>
-#include <cstdlib>
-#include <ctime>
-#include <filesystem>
-#include <cstdlib>
-#include <chrono>
-#include <algorithm>
+#include <iomanip>
+#include <vector>
+#include <future>
 
-using namespace std;
-
-#define PART_SIZE 500000
-#define RAND_ARR_SIZE 2'000'000 
-
-void swap(int* a, int* b) 
+std::chrono::high_resolution_clock::time_point timeNow()
 {
-    int t = *a; 
-    *a = *b; 
-    *b = t; 
-} 
-
-int partition(int*& arr, int low, int high) 
-{ 
-    int pivot = arr[high];
-    int i = (low - 1);
-  
-    for (int j = low; j <= high - 1; j++) 
-    { 
-        if (arr[j] <= pivot)
-        { 
-            i++;
-            swap(&arr[i], &arr[j]);
-        }
-    } 
-    swap(&arr[i + 1], &arr[high]); 
-    return (i + 1); 
+    return std::chrono::high_resolution_clock::now();
+}
+double timeSpent(std::chrono::high_resolution_clock::time_point timeStart)
+{
+    std::chrono::duration<double, std::milli> duration_ms = timeNow() - timeStart;
+    return duration_ms.count();
 }
 
-void quickSort(int*& arr, int low, int high) 
-{ 
-    if (low < high) 
-    { 
-        int pi = partition(arr, low, high); 
-        quickSort(arr, low, pi - 1);
-        quickSort(arr, pi + 1, high);
-    } 
-}
 
-void merge_to_file(const int* arr1, const int* arr2, int sz1, int sz2)
+// Получаем число одновременно работающих потоков.
+unsigned int getKernelsCount()
 {
-
-    fstream temp;
-    const int* first;
-    const int* second;
-
-    temp.open("temp_1_file.txt", fstream::out | std::ofstream::trunc);
-
-    if (arr1[0] < arr2[0]) {
-        first = arr1;
-        second = arr2;
-    }else {
-        first = arr2;
-        second = arr1;
-        swap(&sz1, &sz2); // becouse swap arrays;
-    }
-    
-    if (temp.is_open())
+    unsigned int kernels_count = std::thread::hardware_concurrency();
+    if (kernels_count < 1)
     {
-        int i = 0;
-        int j = 0;
-        
-        while (i < sz1 && j < sz2){
-            if (first[i] < second[j])
-                temp << first[i++] << ' ';
-            else if (first[i] == second[j])
-            {
-                temp << first[i++] << ' ';
-                temp << second[j++] << ' ';
-            }
-            else
-                temp << second[j++] << ' ';
-        }
-
-        while (i < sz1)
-            temp << first[i++] << ' ';
-
-        while (j < sz2)
-            temp << second[j++] << ' ';
-
-       temp.close();
+        kernels_count = 1;
+        std::cout << "Невозможно определить число ядер. Принимаем за 1." << std::endl;
     }
+    std::cout << "Число ядер: " << kernels_count << std::endl;
+    return kernels_count;
 }
 
-void merge_files()
+
+void generateRandomData(int* arr, int dataLength)
 {
-    fstream res;
-    fstream temp1;
-    fstream temp2;
+    for (int i = 0; i < dataLength; i++)
+        arr[i] = rand() % dataLength;
+}
 
-    temp1.open("temp_1_file.txt", fstream::in);
-    res.open("res_file.txt", fstream::in);
-    temp2.open("temp_2_file.txt", fstream::out | ofstream::trunc); // open and clear
 
-    if (!temp1.is_open() || !temp2.is_open() || !res.is_open())
-        return;
+// Исходная функция слияния из модуля 11.4
+void merge(int* arr, int begin, int middle, int end)
+{
+    int nl = middle - begin + 1;
+    int nr = end - middle;
 
-    int temp1_value;
-    int res_value;
-        
-    temp1 >> temp1_value;
-    res >> res_value;
-    while (!temp1.eof() && !res.eof()) {
-        if (temp1_value <= res_value) {
-            temp2 << temp1_value << ' ';
-            temp1 >> temp1_value;
+    // создаем временные массивы
+    int* left = new int[nl];
+    int* right = new int[nr];
+
+    // копируем данные во временные массивы
+    for (int i = 0; i < nl; i++)
+        left[i] = arr[begin + i];
+    for (int j = 0; j < nr; j++)
+        right[j] = arr[middle + 1 + j];
+
+    int i = 0, j = 0;
+    int k = begin;  // начало левой части
+
+    while (i < nl && j < nr) {
+        // записываем минимальные элементы обратно во входной массив
+        if (left[i] <= right[j]) {
+            arr[k] = left[i];
+            i++;
         }
         else {
-            temp2 << res_value << ' ';
-            res >> res_value;
+            arr[k] = right[j];
+            j++;
         }
+        k++;
     }
-
-    while (!res.eof()) {
-        temp2 << res_value << ' ';
-        res >> res_value;
+    // записываем оставшиеся элементы левой части
+    while (i < nl) {
+        arr[k] = left[i];
+        i++;
+        k++;
     }
-
-    while (!temp1.eof()) {
-        temp2 << temp1_value << ' ';
-        temp1 >> temp1_value;
+    // записываем оставшиеся элементы правой части
+    while (j < nr) {
+        arr[k] = right[j];
+        j++;
+        k++;
     }
+    delete[] left;
+    delete[] right;
+}
 
-    temp1.close();
-    temp2.close();
-    res.close();
-    
-    // delete content of file
-    res.open("res_file.txt", std::ofstream::out | std::ofstream::trunc);
-    if (res.is_open())
-        res.close();
 
-    // copy result to result file
-    if (!filesystem::copy_file("temp_2_file.txt", "res_file.txt",
-        filesystem::copy_options::overwrite_existing))
+// Исходная функция разбиения из модуля 11.4
+void merge(int* arr, int start, int stop)
+{
+    if (start >= stop)
         return;
+
+    int middle = (start + stop) / 2;
+    merge(arr, start, middle);
+    merge(arr, middle + 1, stop);
+    merge(arr, start, middle, stop);
 }
 
-// return the size of readed part
-int read_part_arr(fstream& fs, int*& arr)
+
+// Функция слияния кусков массива, отсортированных разными потоками
+void finalMerge(int* arr, const std::vector<int>& stopIndexes)
 {
-    arr = new int[PART_SIZE];
-    int* tmp_arr;
-    int i;
-    for (i = 0; i < PART_SIZE && !fs.eof(); i++)
-        fs >> arr[i];
+    int i, j, k, leftBegin, leftEnd, leftLength, rightBegin, rightEnd, rightLength;
 
-    if (i == 1){
-        delete[] arr;
-        return 0;
-    }
+    for (int threadsNum = 1; threadsNum < stopIndexes.size(); ++threadsNum)
+    { 
+        leftBegin = 0;
+        leftEnd = stopIndexes[threadsNum - 1];
+        leftLength = leftEnd - leftBegin + 1;
+        rightBegin = leftEnd + 1;
+        rightEnd = stopIndexes[threadsNum];
+        rightLength = rightEnd - rightBegin + 1;
 
-    if (i != PART_SIZE){
-        tmp_arr = new int[i];
-        for (size_t j = 0; j < i; j++)
-            tmp_arr[j] = arr[j];
+        int* left = new int[leftLength];
+        int* right = new int[rightLength];
+      
+        for (int i = 0; i < leftLength; i++)
+            left[i] = arr[i + leftBegin];
+        for (int j = 0; j < rightLength; j++)
+            right[j] = arr[j + rightBegin];
 
-        delete[] arr;
-        arr = tmp_arr;   
-        return i - 1;
-    }
-
-    return PART_SIZE;
-}
-
-void sort_func(const string& filename){
-    
-    fstream fs;
-    fs.open(filename, fstream::in);
-
-    if(fs.is_open())
-    {
-        while (!fs.eof())
+        k = 0;
+        i = 0;
+        j = 0;
+        while ((i < leftLength) && (j < rightLength))
         {
-            int* part_1;
-            int* part_2;
-
-            int size_1 = read_part_arr(fs, part_1);
-            int size_2 = read_part_arr(fs, part_2);
-            if (size_1 == 0 || size_2 == 0)
-                return;
-            cout << " size_1 = " << size_1 << " size_2 = " << size_2 << endl;
-            quickSort(part_1, 0, size_1 - 1);
-            quickSort(part_2, 0, size_2 - 1);          
-            merge_to_file(part_1, part_2, size_1, size_2);
-            merge_files();
+            if (left[i] <= right[j]) {
+                arr[k] = left[i];
+                i++;
+            }
+            else {
+                arr[k] = right[j];
+                j++;
+            }
+            k++;
         }
-        fs.close();
-    }   
-}
-
-void write_rand_arr(const string& filename)
-{
-    fstream fs;
-
-    srand(time(nullptr));
-    int lef_border = -100;
-    int range_len = 50000; // правая граница = range_len + left_border
-
-    fs.open(filename, fstream::out | ofstream::trunc);
-    if(fs.is_open())
-    {
-       for (int i = 0; i < RAND_ARR_SIZE; i++)
-           fs << (lef_border + rand() % range_len) << ' ';
-
-       fs.close();
+        while (i < leftLength) {
+            arr[k] = left[i];
+            i++;
+            k++;
+        }
+        while (j < rightLength) {
+            arr[k] = right[j];
+            j++;
+            k++;
+        }
+        delete[] left;
+        delete[] right;
     }
+
 }
 
 
-int main(int argc, char const *argv[])
+// функция разбиения массива на части для вызова отдельных потоков
+void mergeParallel(int* arr, int length, int threadsNum)
 {
+    int lengthToProcess = length;
+    int lengthInThread;
+    int start = 0, stop;
+    std::vector<int> stopIndexes; // Для хранения границ подмассивов
+    std::vector<std::future<void>> futures; // Для получения уведомлений о завершении функции и получения результата
+    for (int i = 0; i < threadsNum; ++i)
+    {
+        // Разбиение исходного массива на части одинаковой длины (+/-1)
+        lengthInThread = lengthToProcess / (threadsNum - i);
+        lengthToProcess = lengthToProcess - lengthInThread;
+        stop = start + lengthInThread - 1;
+        auto handle = [](int* arr, const int& start, const int& stop)
+            { merge(arr, start, stop); }; // Лямбда-функция для выполнения потоками
+        std::packaged_task<void(int*, const int&, const int&)> task1(handle); // Задача для получения future
+        futures.push_back(std::move(task1.get_future()));
+        std::thread thread(std::move(task1), arr, start, stop); // Запускаем потоки
+        thread.detach();
 
-    string filename = "array_data.txt";
+        stopIndexes.push_back(stop);
+        start = stop + 1;
+    }
+    for (int i = 0; i < threadsNum; ++i)
+        futures[i].get();	// Дожидаемся завершения всех потоков
+    finalMerge(arr, stopIndexes); // Склеиваем куски массива
+}
 
-    write_rand_arr(filename);
-    cout << "Genetrating data is done!" << endl;
 
-    fstream res;
-    res.open("res_file.txt", fstream::out | ofstream::trunc);
-    res.close();
+int main()
+{
+	setlocale(LC_ALL, "");
+    unsigned int threadsCount = getKernelsCount();
 
-    auto start = chrono::high_resolution_clock::now();
-    sort_func(filename);
-    auto finish = chrono::high_resolution_clock::now();
-    chrono::duration<double> elapsed = finish - start;
-    cout << "Elapsed time: " << elapsed.count() << " sec" << endl;
+    double tempTime = 0.0;
+    std::chrono::high_resolution_clock::time_point startTime;
+    srand(0);
 
-    return 0;
+    int dataLength = 10000000; // Размер массива
+
+    int* arr = new int[dataLength];
+    generateRandomData(arr, dataLength);
+
+    std::cout << "==== Обработка в однопоточном режиме ====" << std::endl;
+    startTime = timeNow();
+    merge(arr, 0, dataLength - 1);
+    tempTime = timeSpent(startTime);
+    std::cout << "Сортировка заняла: " << std::setprecision(3) << tempTime / 1000 << " с" << std::endl;
+
+    generateRandomData(arr, dataLength);
+
+    std::cout << "==== Обработка в многопоточном режиме ====" << std::endl;
+    startTime = timeNow();
+    mergeParallel(arr, dataLength, threadsCount);
+    tempTime = timeSpent(startTime);
+    std::cout << "Сортировка заняла: " << std::setprecision(3) << tempTime / 1000 << " с" << std::endl;
+
+
+    // Проверка правильности сортировки
+    bool wrongFlag = false;
+    for (int i = 0; i < dataLength - 1; ++i)
+        if (arr[i] > arr[i + 1])
+        {
+            wrongFlag = true;
+            break;
+        }
+    if (wrongFlag)
+        std::cout << "Ошибка сортировки!" << std::endl;
+    else
+        std::cout << "Сортировка выполнена успешно." << std::endl;
+
+    if (dataLength <= 500) 
+    {
+        for (int i = 0; i < dataLength; ++i)
+            std::cout << arr[i] << " ";
+        std::cout << std::endl;
+    }
+
+    delete[] arr;
+	return 0;
 }
